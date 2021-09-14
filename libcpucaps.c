@@ -230,16 +230,20 @@ void query_Intel_caches(cpucaps_t* caps) {
             if (cacheType == 1) {                        /* 1 = Data Cache */
                 caps->L1d_lineSizeBytes = (int)lineSize;
                 caps->L1d_sizeKibiBytes = (int)cacheSizeKB;
+                caps->L1d_associativityType = (int)assocWays;
             } else if (cacheType == 2) {                 /* 2 = Instruction Cache */
                 caps->L1i_lineSizeBytes = (int)lineSize;
                 caps->L1i_sizeKibiBytes = (int)cacheSizeKB;
+                caps->L1i_associativityType = (int)assocWays;
             }
         } else if (cacheLevel == 2 && cacheType == 3) {  /* 3 = Unified Cache */
             caps->L2_lineSizeBytes = (int)lineSize;
             caps->L2_sizeKibiBytes = (int)cacheSizeKB;
+            caps->L2_associativityType = (int)assocWays;
         } else if (cacheLevel == 3 && cacheType == 3) {
             caps->L3_lineSizeBytes = (int)lineSize;
             caps->L3_sizeKibiBytes = (int)cacheSizeKB;
+            caps->L3_associativityType = (int)assocWays;
         }
     }
 }
