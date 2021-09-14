@@ -266,7 +266,7 @@ void query_AMD_caches(uint32_t highestFuncEx, cpucaps_t* caps) {
 
     if (highestFuncEx >= 0x80000006) {
         cpuid_wrapper(0x80000006, 0, &cpuidResult);
-        
+
         caps->L2_lineSizeBytes = cpuidResult.ecx & 0xFF;
         caps->L2_sizeKibiBytes = (cpuidResult.ecx >> 16) & 0xFFFF;
         caps->L2_associativityType = (cpuidResult.ecx >> 12) & 0xF;
@@ -276,6 +276,18 @@ void query_AMD_caches(uint32_t highestFuncEx, cpucaps_t* caps) {
         if (caps->L3_sizeKibiBytes) {  /* 0 means L3 is disabled */
             caps->L3_lineSizeBytes = cpuidResult.edx & 0xFF;
             caps->L3_associativityType = (cpuidResult.edx >> 12) & 0xF;
+
+            /* 9 is reserved, and on Zen 2 L3 assoc. will always be 9 */
+            /* indicating that we have to use the new way of caches query - function 0x8000001D */
+            /* this func on AMD works almost the same way as func 4 on Intel */
+            if (caps->L3_associativityType == 9 && highestFuncEx >= 0x8000001D) {
+                cpuid_wrapper(0x8000001D, 3, &cpuidResult);
+
+                caps->L3_lineSizeBytes = (cpuidResult.ebx & 0xFFF) + 1;
+                caps->L3_associativityType = ((cpuidResult.ebx >> 22) & 0x3FF) + 1;
+            }
         }
+
+
     }
 }
