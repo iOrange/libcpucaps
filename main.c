@@ -1,7 +1,6 @@
 #include "libcpucaps.h"
 
 #include <stdio.h>
-#include <conio.h>
 
 int main() {
     cpucaps_t caps;
@@ -59,6 +58,7 @@ int main() {
         PRINT_CAP(ABM);
         PRINT_CAP(SSE4a);
         PRINT_CAP(MisalignSSE);
+        PRINT_CAP(AES);
         PRINT_CAP(AVX);
         PRINT_CAP(AVX2);
         PRINT_CAP(AVX512F);
@@ -75,8 +75,8 @@ int main() {
         printf("Failed to get CPU caps\n");
     }
 
-    printf("\nPress any key to exit...\n");
-    getch();
+    printf("\nPress Enter to exit...\n");
+    getchar();
 
     return 0;
 }

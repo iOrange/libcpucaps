@@ -75,6 +75,7 @@ int libcpucaps_HasSSE42(cpucaps_t* caps);
 int libcpucaps_HasABM(cpucaps_t* caps);		/* POPCNT & LZCNT */
 int libcpucaps_HasSSE4a(cpucaps_t* caps);
 int libcpucaps_HasMisalignSSE(cpucaps_t* caps);
+int libcpucaps_HasAES(cpucaps_t* caps);
 int libcpucaps_HasAVX(cpucaps_t* caps);
 int libcpucaps_HasAVX2(cpucaps_t* caps);
 int libcpucaps_HasAVX512F(cpucaps_t* caps);

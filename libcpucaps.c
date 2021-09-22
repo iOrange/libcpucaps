@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <string.h>    /* memcpy, memset, memcmp */
 
+#if defined(__clang__) || defined(__GNUC__) || defined(__GNUG__) || defined(__ICC) || defined(__INTEL_COMPILER)
+#include <cpuid.h>
+#endif
+
 typedef struct _s_cpuid_result {
     uint32_t eax, ebx, ecx, edx;
 } cpuid_result_t;
@@ -150,6 +154,9 @@ int libcpucaps_HasSSE4a(cpucaps_t* caps) {
 int libcpucaps_HasMisalignSSE(cpucaps_t* caps) {
     return GET_BIT(caps->func80000001_ecx, 7);
 }
+int libcpucaps_HasAES(cpucaps_t* caps) {
+    return GET_BIT(caps->func1_ecx, 25);
+}
 int libcpucaps_HasAVX(cpucaps_t* caps) {
     return GET_BIT(caps->func1_ecx, 28);
 }
@@ -185,8 +192,8 @@ int libcpucaps_HasFMA4(cpucaps_t* caps) {
 }
 
 
-#ifdef _MSC_VER
 int cpuid_wrapper(uint32_t func, uint32_t subfunc, cpuid_result_t* result) {
+#ifdef _MSC_VER
     int cpuInfo[4];
     memset(cpuInfo, 0, sizeof(cpuInfo));
 
@@ -194,8 +201,10 @@ int cpuid_wrapper(uint32_t func, uint32_t subfunc, cpuid_result_t* result) {
 
     memcpy(result, cpuInfo, sizeof(cpuid_result_t));
     return 1;
+#else
+    return __get_cpuid_count(func, subfunc, &result->eax, &result->ebx, &result->ecx, &result->edx);
+#endif
 }
-#endif /* _MSC_VER */
 
 
 /* https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf */
@@ -225,7 +234,7 @@ void query_Intel_caches(cpucaps_t* caps) {
         /* Cache size = Ways * Partitions * Line_Size * Sets */
         cacheSizeKB = (assocWays * linePartitions * lineSize * setsNum) / 1024;
 
-        
+
         if (cacheLevel == 1) {
             if (cacheType == 1) {                        /* 1 = Data Cache */
                 caps->L1d_lineSizeBytes = (int)lineSize;
