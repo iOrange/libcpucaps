@@ -12,6 +12,7 @@ typedef struct _s_cpuid_result {
 
 int cpuid_wrapper(uint32_t func, uint32_t subfunc, cpuid_result_t* result);
 void query_Intel_caches(cpucaps_t* caps);
+void query_Intel_topology(uint32_t highestFunc, cpucaps_t* caps);
 void query_AMD_caches(uint32_t highestFuncEx, cpucaps_t* caps);
 
 int libcpucaps_GetCaps(cpucaps_t* caps) {
@@ -52,8 +53,11 @@ int libcpucaps_GetCaps(cpucaps_t* caps) {
         caps->familyEx = (cpuidResult.eax >> 20) & 0xFF;
     }
 
-    if (highestFunc >= 4 && caps->isIntel) { /* Intel's "Deterministic Cache Parameters Leaf" */
-        query_Intel_caches(caps);
+    if (caps->isIntel) { 
+        if (highestFunc >= 4) {
+            query_Intel_caches(caps);   /* Intel's "Deterministic Cache Parameters Leaf" */
+            query_Intel_topology(highestFunc, caps); /* Intel's "Extended Topology Enumeration leaf" */
+        }
     }
 
     if (highestFunc >= 7) {
@@ -254,6 +258,46 @@ void query_Intel_caches(cpucaps_t* caps) {
             caps->L3_sizeKibiBytes = (int)cacheSizeKB;
             caps->L3_associativityType = (int)assocWays;
         }
+    }
+}
+
+/* https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf */
+/* Extended Topology Enumeration Leaf */
+/* In theory we should be able to just while (1) {} and break of level type == 0 */
+/*   but it's better to cap our iterations for sanity */
+#define MAX_INTEL_FN11_ITERATIONS   3
+void query_Intel_topology(uint32_t highestFunc, cpucaps_t* caps) {
+    uint32_t level, levelType, smtValue, coreValue;
+    cpuid_result_t cpuidResult;
+
+    if (highestFunc >= 11) {
+        smtValue = 1;
+        coreValue = 1;
+
+        for (level = 0; level < MAX_INTEL_FN11_ITERATIONS; ++level) {
+            cpuid_wrapper(11, level, &cpuidResult);
+
+            /* Level types:      */
+            /* 0: Invalid.       */
+            /* 1: SMT.           */
+            /* 2: Core.          */
+            /* 3 - 255: Reserved */
+            levelType = (cpuidResult.ecx >> 8) & 0xFF;
+            if (!levelType) {
+                break;
+            } else if (levelType == 1) {
+                smtValue = cpuidResult.ebx & 0xFFFF;
+            } else if (levelType == 2) {
+                coreValue = cpuidResult.ebx & 0xFFFF;
+            }
+        }
+
+        caps->numLogicalCores = (int)coreValue;
+        caps->numCores = caps->numLogicalCores / smtValue;
+    } else {
+        /* TODO: implement older ways of topology query mechanisms ? */
+        caps->numCores = 1;
+        caps->numLogicalCores = 1;
     }
 }
 

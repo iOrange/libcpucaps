@@ -24,6 +24,10 @@ typedef struct _s_cpucaps {
     char  modelEx;
     char  familyEx;
 
+    /* topology */
+    int   numCores;
+    int   numLogicalCores;
+
     /* cache info */
     int   L1d_lineSizeBytes;
     int   L1d_sizeKibiBytes;
