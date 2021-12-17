@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 int main() {
+    int i, j, k;
     cpucaps_t caps;
     if (LIBCPUCAPS_ERROR_OK == libcpucaps_GetCaps(&caps)) {
         if (caps.isIntel) {
@@ -36,6 +37,17 @@ int main() {
         printf("     L3 line : %d B\n", caps.L3_lineSizeBytes);
         printf("     L3 size : %d KB\n", caps.L3_sizeKibiBytes);
         printf("    L3 assoc : %d\n", caps.L3_associativityType);
+
+        printf("\n");
+        printf("Extended topology:\n");
+        for (i = 0, j = 0, k = 0; i < caps.numLogicalCores; ++i, ++j) {
+            if (i && (caps.coreIDs[i - 1] != caps.coreIDs[i])) {
+                printf("  Physical core #%d has %d logical cores\n", k, j);
+                j = 0;
+                k++;
+            }
+        }
+        printf("  Physical core #%d has %d logical cores\n", k, j);
 
         printf("\n");
         printf("CPU caps:\n");

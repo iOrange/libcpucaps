@@ -1,9 +1,18 @@
 ﻿#include "libcpucaps.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>    /* memcpy, memset, memcmp */
 
 #if defined(__clang__) || defined(__GNUC__) || defined(__GNUG__) || defined(__ICC) || defined(__INTEL_COMPILER)
 #include <cpuid.h>
+#endif
+
+#ifdef __linux__
+#else
+#define WIN32_LEAN_AND_MEAN
+#define VC_EXTRALEAN
+#define NOMINMAX
+#include <Windows.h>
 #endif
 
 typedef struct _s_cpuid_result {
@@ -53,10 +62,10 @@ int libcpucaps_GetCaps(cpucaps_t* caps) {
         caps->familyEx = (cpuidResult.eax >> 20) & 0xFF;
     }
 
-    if (caps->isIntel) { 
+    if (caps->isIntel) {
         if (highestFunc >= 4) {
-            query_Intel_caches(caps);   /* Intel's "Deterministic Cache Parameters Leaf" */
-            query_Intel_topology(highestFunc, caps); /* Intel's "Extended Topology Enumeration leaf" */
+            query_Intel_caches(caps);                   /* Intel's "Deterministic Cache Parameters Leaf" */
+            query_Intel_topology(highestFunc, caps);    /* Intel's "Extended Topology Enumeration leaf" (both V1 & V2) */
         }
     }
 
@@ -262,38 +271,78 @@ void query_Intel_caches(cpucaps_t* caps) {
 }
 
 /* https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf */
+/* https://www.intel.com/content/dam/develop/external/us/en/documents/intel-64-architecture-processor-topology-enumeration.pdf */
 /* Extended Topology Enumeration Leaf */
+/* https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html */
+/* V2 Extended Topology Enumeration Leaf */
 /* In theory we should be able to just while (1) {} and break of level type == 0 */
 /*   but it's better to cap our iterations for sanity */
-#define MAX_INTEL_FN11_ITERATIONS   3
+#define MAX_INTEL_TOPOLOGY_ITERATIONS   7
 void query_Intel_topology(uint32_t highestFunc, cpucaps_t* caps) {
-    uint32_t level, levelType, smtValue, coreValue;
+    uint32_t topologyFunc, level, levelType, smtValue, coreValue, nextShift, smtShift, coreShift, smtMask, coreMask, core;
+    HANDLE thread;
+    DWORD_PTR affinityMask;
     cpuid_result_t cpuidResult;
 
     if (highestFunc >= 11) {
+        topologyFunc = (highestFunc >= 31) ? 31 : 11;
+
         smtValue = 1;
         coreValue = 1;
 
-        for (level = 0; level < MAX_INTEL_FN11_ITERATIONS; ++level) {
-            cpuid_wrapper(11, level, &cpuidResult);
+        for (level = 0; level < MAX_INTEL_TOPOLOGY_ITERATIONS; ++level) {
+            cpuid_wrapper(topologyFunc, level, &cpuidResult);
 
             /* Level types:      */
             /* 0: Invalid.       */
             /* 1: SMT.           */
             /* 2: Core.          */
-            /* 3 - 255: Reserved */
+            /* 3: Module.        */
+            /* 4: Tile.          */
+            /* 5: Die.           */
+            /* 6 - 255: Reserved */
             levelType = (cpuidResult.ecx >> 8) & 0xFF;
             if (!levelType) {
                 break;
-            } else if (levelType == 1) {
+            }
+
+            /* Bits 04 - 00: Number of bits to shift right on x2APIC ID to get a unique topology ID of the next level type*. */
+            /* All logical processors with the same next level ID share current level. */
+            nextShift = cpuidResult.eax & 0x1F;
+
+            if (levelType == 1) {
                 smtValue = cpuidResult.ebx & 0xFFFF;
+                smtShift = nextShift;
+                smtMask = (~0u) >> (32 - nextShift);
             } else if (levelType == 2) {
                 coreValue = cpuidResult.ebx & 0xFFFF;
+                coreShift = nextShift;
+                coreMask = (~0u) >> (32 - nextShift);
             }
         }
 
         caps->numLogicalCores = (int)coreValue;
         caps->numCores = caps->numLogicalCores / smtValue;
+
+        if (caps->numLogicalCores > 1) {
+            thread = GetCurrentThread();
+            affinityMask = SetThreadAffinityMask(thread, 1);
+            level = 1; //#NOTE_SK: reusing it to count physical cores
+            for (core = 0; core < (uint32_t)caps->numLogicalCores; ++core) {
+                SetThreadAffinityMask(thread, (DWORD_PTR)1 << core);
+                cpuid_wrapper(topologyFunc, 0, &cpuidResult);
+
+                coreValue = (cpuidResult.edx >> smtShift) & coreMask;
+                caps->coreIDs[core] = (char)(coreValue & 0xFF);
+
+                if (core && (caps->coreIDs[core] != caps->coreIDs[core - 1])) {
+                    ++level;
+                }
+            }
+            SetThreadAffinityMask(thread, affinityMask);
+
+            caps->numCores = level;
+        }
     } else {
         /* TODO: implement older ways of topology query mechanisms ? */
         caps->numCores = 1;
@@ -340,7 +389,5 @@ void query_AMD_caches(uint32_t highestFuncEx, cpucaps_t* caps) {
                 caps->L3_associativityType = ((cpuidResult.ebx >> 22) & 0x3FF) + 1;
             }
         }
-
-
     }
 }

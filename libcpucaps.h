@@ -3,6 +3,7 @@
 
 #define LIBCPUCAPS_MAX_CPU_NAME_LEN     48
 #define LIBCPUCAPS_MAX_CPU_VENDOR_LEN   (12 + 1)
+#define LIBCPUCAPS_MAX_CPU_CORES        128
 
 #define LIBCPUCAPS_ERROR_OK              0
 #define LIBCPUCAPS_ERROR_FAILED         -1
@@ -27,6 +28,7 @@ typedef struct _s_cpucaps {
     /* topology */
     int   numCores;
     int   numLogicalCores;
+    char  coreIDs[LIBCPUCAPS_MAX_CPU_CORES];
 
     /* cache info */
     int   L1d_lineSizeBytes;
@@ -60,7 +62,7 @@ extern "C" {
 /* returns LIBCPUCAPS_ERROR_xxx */
 int libcpucaps_GetCaps(cpucaps_t* caps);
 
-/* functions to query specific features support (return 1 or 0) */
+/* functions to query specific features support (returns 1 or 0) */
 int libcpucaps_HasFPU(cpucaps_t* caps);
 int libcpucaps_HasPSE(cpucaps_t* caps);
 int libcpucaps_HasTSC(cpucaps_t* caps);
