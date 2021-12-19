@@ -23,6 +23,7 @@ int cpuid_wrapper(uint32_t func, uint32_t subfunc, cpuid_result_t* result);
 void query_Intel_caches(cpucaps_t* caps);
 void query_Intel_topology(uint32_t highestFunc, cpucaps_t* caps);
 void query_AMD_caches(uint32_t highestFuncEx, cpucaps_t* caps);
+void query_AMD_topology(uint32_t highestFuncEx, cpucaps_t* caps);
 
 int libcpucaps_GetCaps(cpucaps_t* caps) {
     uint32_t highestFunc, highestFuncEx;
@@ -62,11 +63,9 @@ int libcpucaps_GetCaps(cpucaps_t* caps) {
         caps->familyEx = (cpuidResult.eax >> 20) & 0xFF;
     }
 
-    if (caps->isIntel) {
-        if (highestFunc >= 4) {
-            query_Intel_caches(caps);                   /* Intel's "Deterministic Cache Parameters Leaf" */
-            query_Intel_topology(highestFunc, caps);    /* Intel's "Extended Topology Enumeration leaf" (both V1 & V2) */
-        }
+    if (highestFunc >= 4 && caps->isIntel) {
+        query_Intel_caches(caps);                   /* Intel's "Deterministic Cache Parameters Leaf" */
+        query_Intel_topology(highestFunc, caps);    /* Intel's "Extended Topology Enumeration leaf" (both V1 & V2) */
     }
 
     if (highestFunc >= 7) {
@@ -104,6 +103,7 @@ int libcpucaps_GetCaps(cpucaps_t* caps) {
     /* AMD caches info */
     if (highestFuncEx >= 0x80000005 && caps->isAMD) {
         query_AMD_caches(highestFuncEx, caps);
+        query_AMD_topology(highestFuncEx, caps);
     }
 
     return LIBCPUCAPS_ERROR_OK;
@@ -388,6 +388,43 @@ void query_AMD_caches(uint32_t highestFuncEx, cpucaps_t* caps) {
                 caps->L3_lineSizeBytes = (cpuidResult.ebx & 0xFFF) + 1;
                 caps->L3_associativityType = ((cpuidResult.ebx >> 22) & 0x3FF) + 1;
             }
+        }
+    }
+}
+
+// https://www.amd.com/system/files/TechDocs/25481.pdf
+// page 34: CPUID Fn8000_001E
+void query_AMD_topology(uint32_t highestFuncEx, cpucaps_t* caps) {
+    uint32_t numLogicalCores, numCores, core;
+    HANDLE thread;
+    DWORD_PTR affinityMask;
+    cpuid_result_t cpuidResult;
+
+    caps->numCores = 1;
+    caps->numLogicalCores = 1;
+
+    if (highestFuncEx >= 0x8000001E) {
+        // AMD says we should check it like so:
+        // If CPUID Fn8000_0001_ECX[TopologyExtensions]==0 then CPUID Fn8000_001E_E[D,C,B,A]X is reserved
+        cpuid_wrapper(0x8000001E, 0, &cpuidResult);
+        if (!cpuidResult.ecx) {
+            return;
+        }
+
+        cpuid_wrapper(1, 0, &cpuidResult);
+        numLogicalCores = (cpuidResult.ebx >> 16) & 0xFF;
+
+        if (numLogicalCores > 1) {
+            thread = GetCurrentThread();
+            affinityMask = SetThreadAffinityMask(thread, 1);
+            numCores = 1;
+            for (core = 0; core < (uint32_t)caps->numLogicalCores; ++core) {
+                SetThreadAffinityMask(thread, (DWORD_PTR)1 << core);
+                cpuid_wrapper(0x8000001E, 0, &cpuidResult);
+
+                // ??? code here, need to find AMD cpu to test & debug
+            }
+            SetThreadAffinityMask(thread, affinityMask);
         }
     }
 }
