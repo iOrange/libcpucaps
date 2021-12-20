@@ -111,7 +111,7 @@ int libcpucaps_GetCaps(cpucaps_t* caps) {
 
 
 
-#define GET_BIT(a, bit)  (((a) >> (bit)) & 1);
+#define GET_BIT(a, bit)  (((a) >> (bit)) & 1)
 
 int libcpucaps_HasFPU(cpucaps_t* caps) {
     return GET_BIT(caps->func1_edx, 0);
@@ -341,7 +341,7 @@ void query_Intel_topology(uint32_t highestFunc, cpucaps_t* caps) {
             }
             SetThreadAffinityMask(thread, affinityMask);
 
-            caps->numCores = level;
+            caps->numCores = (int)level;
         }
     } else {
         /* TODO: implement older ways of topology query mechanisms ? */
@@ -403,14 +403,8 @@ void query_AMD_topology(uint32_t highestFuncEx, cpucaps_t* caps) {
     caps->numCores = 1;
     caps->numLogicalCores = 1;
 
-    if (highestFuncEx >= 0x8000001E) {
-        // AMD says we should check it like so:
-        // If CPUID Fn8000_0001_ECX[TopologyExtensions]==0 then CPUID Fn8000_001E_E[D,C,B,A]X is reserved
-        cpuid_wrapper(0x8000001E, 0, &cpuidResult);
-        if (!cpuidResult.ecx) {
-            return;
-        }
-
+    // If CPUID Fn8000_0001_ECX[TopologyExtensions]==0 then CPUID Fn8000_001E_E[D,C,B,A]X is reserved
+    if (GET_BIT(caps->func80000001_ecx, 22) && highestFuncEx >= 0x8000001E) {
         cpuid_wrapper(1, 0, &cpuidResult);
         numLogicalCores = (cpuidResult.ebx >> 16) & 0xFF;
 
@@ -418,13 +412,20 @@ void query_AMD_topology(uint32_t highestFuncEx, cpucaps_t* caps) {
             thread = GetCurrentThread();
             affinityMask = SetThreadAffinityMask(thread, 1);
             numCores = 1;
-            for (core = 0; core < (uint32_t)caps->numLogicalCores; ++core) {
+            for (core = 0; core < numLogicalCores; ++core) {
                 SetThreadAffinityMask(thread, (DWORD_PTR)1 << core);
                 cpuid_wrapper(0x8000001E, 0, &cpuidResult);
 
-                // ??? code here, need to find AMD cpu to test & debug
+                caps->coreIDs[core] = (char)(cpuidResult.ebx & 0xFF);
+
+                if (core && (caps->coreIDs[core] != caps->coreIDs[core - 1])) {
+                    ++numCores;
+                }
             }
             SetThreadAffinityMask(thread, affinityMask);
+
+            caps->numCores = (int)numCores;
+            caps->numLogicalCores = (int)numLogicalCores;
         }
     }
 }
